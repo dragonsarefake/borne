@@ -142,7 +142,10 @@ static DualStream Both;
 #define HUMAN_PORT    Both
 #define MACHINE_PORT  Both
 
-static const char* FW_VERSION    = "1.0.0";
+// The Pi compares this with firmware/pad.version and reflashes the pad when
+// they differ. BUMP IT with every change to this sketch, then run
+// firmware/release.py - otherwise the change never reaches the cabinet.
+static const char* FW_VERSION    = "1.1.0";
 static const int   PROTO_VERSION = 1;
 
 // HX711 / ADC limits
