@@ -61,7 +61,78 @@ updates itself from this repository.
 |---|---|
 | Reading goes down when pressed | Setup > Calibration details > Invert the sign |
 | Axis stuck at 1.0 | full scale is too low: raise it |
-| No joystick on the Pi | `sudo systemctl status pad` then `journalctl -u pad -n 30` |
-| Joystick there, game does not react | `sudo systemctl stop pad && sudo python3 /opt/pad/pad.py --test` (axes ramp 0 to 1 without the pad), then `sudo systemctl start pad` |
-| Force an update on the Pi | `sudo systemctl start pad-update` |
-| Stop auto-update | `sudo systemctl disable --now pad-update.timer` |
+| Nothing on the Pi | Debug on the Pi, below |
+
+## Debug on the Pi
+
+Go down the list. The first step that fails is the broken part.
+
+**1. Pad seen on USB?**
+
+    ls /dev/ttyUSB*
+
+Nothing: cable or power. `dmesg | tail -20` after plugging in.
+
+**2. Bridge running?**
+
+    sudo systemctl status pad
+    journalctl -u pad -n 30
+
+`pad not available`: back to step 1.
+
+**3. Pad sending?**
+
+    sudo systemctl stop pad
+    sudo python3 /opt/pad/pad.py --print
+
+Press the pad: X and Y move. `Ctrl+C`, then `sudo systemctl start pad`.
+
+**4. Joystick there and moving?**
+
+    grep -A4 esp32borne /proc/bus/input/devices
+    sudo python3 -m evdev.evtest
+
+Pick `esp32borne#1`, press the pad.
+
+**5. Game ignores it?**
+
+    sudo systemctl stop pad
+    sudo python3 /opt/pad/pad.py --test
+
+Both axes ramp 0 to 1 to 0 with no pad. `Ctrl+C`, then `sudo systemctl start pad`.
+
+### Hard-set
+
+Force the serial port:
+
+    sudo systemctl edit pad
+
+Type, save, then `sudo systemctl restart pad`:
+
+    [Service]
+    ExecStart=
+    ExecStart=/usr/bin/python3 /opt/pad/pad.py /dev/ttyUSB0
+
+Previous bridge version:
+
+    sudo systemctl disable --now pad-update.timer
+    sudo cp /opt/pad/pad.py.old /opt/pad/pad.py
+    sudo systemctl restart pad
+
+Update now / auto-update back on:
+
+    sudo systemctl start pad-update
+    sudo systemctl enable --now pad-update.timer
+
+Start clean: run the install line from step 4 again.
+
+Talk to the pad (bridge stopped, `Ctrl+]` to exit):
+
+    sudo systemctl stop pad
+    python3 -m serial.tools.miniterm /dev/ttyUSB0 115200
+
+| Type | Does |
+|---|---|
+| `$CFG` | shows calibration and full scale |
+| `$SET,fs=50000` | full scale 50 kg (value in grams) |
+| `$SET,ax=0` | force on X + Y (`1` X only, `2` Y only) |
