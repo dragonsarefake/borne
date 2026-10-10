@@ -15,16 +15,13 @@ whether the joystick `esp32borne#1` now exists. Details: [pi/README.md](pi/READM
 
 ## Wiring
 
-Everything reaches the Raspberry Pi over two USB cables: one from the ESP32
-(the force pad) and one from the button board.
+The pad reaches the Raspberry Pi over one USB cable, which is both its power
+and its data. (The cabinet's buttons are separate and are the game developer's;
+nothing here touches them.)
 
 ```
-                                 +--> USB --- ESP32 --- HX711 --- load cell     (force)
-   Raspberry Pi 4  --------------+
-                                 +--> USB --- EG STARTS board --- 10 buttons    (buttons)
+   Raspberry Pi 4 --- USB --- ESP32 --- HX711 --- load cell
 ```
-
-### Force pad: load cell -> HX711 -> ESP32
 
 The HX711 is drawn as the green board looks with the chip facing you: `P2`
 (six holes) on the left, `P1` (four holes) on the right.
@@ -72,31 +69,6 @@ Things that catch people out:
 - An S-type cell must be loaded **along its axis**, through the threaded ends.
   Side load reads wrong and can damage it.
 
-### Buttons: EG STARTS board
-
-Each button is one two-pin plug. Which socket a button goes in does not
-matter: `pi/scan.py map` asks you to press each one and records it.
-
-```
-  +--------------------------------------------------------------------------+
-  | [USB cable]   Mode  Clear  Turbo  Auto  |  Up  Down  Right  Left |  5V   |
-  |   to the Pi    \_____ leave empty ____/    \___ not used ______/         |
-  |                                                                          |
-  |                          EG STARTS                         [5-pin stick] |
-  |                                                              not used    |
-  |  K1   K2   K3   K4   K5   K6   K7   K8   Select  Start   K11   K12       |
-  +--------------------------------------------------------------------------+
-     \_______________ the 10 game buttons, any 10 of these 12 ______________/
-```
-
-- 10 buttons (5 per side of the screen) into any ten of the twelve sockets on
-  the bottom row.
-- **Leave `Mode`, `Clear`, `Turbo` and `Auto` empty.** They switch on autofire,
-  which the game cannot tell from real presses. With nothing plugged in there
-  is no way to trigger it.
-- The board's USB cable goes to the Pi. Then: `pi/scan.py devices`, `test`,
-  `map` - see [pi/README.md](pi/README.md).
-
 ## What is here
 
 | Path | What |
@@ -105,6 +77,5 @@ matter: `pi/scan.py map` asks you to press each one and records it.
 | `firmware/loadcell_testbed/usb_page.py` | open the setup page on a PC through the USB cable |
 | `firmware/loadcell_testbed/preview.js`, `page_harness.js`, `extract_page.js` | look at and test the page without a board |
 | `pi/pad.py`, `pi/install_pad.sh` | the pad as a joystick on the Pi |
-| `pi/scan.py`, `pi/buttons.py` | the cabinet's USB button board |
 
 Build: `arduino-cli compile --fqbn esp32:esp32:esp32:PartitionScheme=huge_app firmware/loadcell_testbed`
