@@ -73,7 +73,9 @@ class Board:
         head = re.compile(rb"\$R,(\w+),(\d+)")
         try:
             while True:
-                buf += self.ser.read(4096)
+                # Whatever has arrived, at once. read(4096) would sit out the
+                # whole timeout on every reply, which made the page crawl.
+                buf += self.ser.read(self.ser.in_waiting or 1)
                 while True:
                     nl = buf.find(b"\n")
                     if nl < 0:

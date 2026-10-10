@@ -2319,12 +2319,23 @@ static int16_t axisFromGrams(float g) {
 }
 
 static int16_t lastAxis = 0;
+// The page's big number used to be the ring's trimmed mean: a second of
+// averaging that throws away the two highest samples. Right for weighing,
+// wrong for a pad that gets hit - a quick press was discarded outright and
+// the page looked frozen. So the page also gets the newest sample as it is,
+// and the highest one since it last asked, so a hit between two polls still
+// shows.
+static float   liveG    = 0.0f;
+static float   liveMaxG = 0.0f;
 
 // The axis is worked out whether or not anything is listening, so the page
 // shows what a host WOULD read. It used to stop here with no Bluetooth host,
 // which left the page's gauge frozen at zero on a cabinet wired by USB.
 static void gamepadPush(long raw) {
-  int16_t a = axisFromGrams(haveCal() ? rawToGrams(raw) : 0.0f);
+  float g = haveCal() ? rawToGrams(raw) : 0.0f;
+  liveG = g;
+  if (g > liveMaxG) liveMaxG = g;
+  int16_t a = axisFromGrams(g);
   if (a == lastAxis && !axisDirty) return;   // nothing changed, do not spam
   lastAxis = a;
   axisDirty = false;
@@ -3169,10 +3180,14 @@ function info(k){
 function tick(){
   return fetch('/data').then(function(r){return r.json();}).then(function(d){
     fs=d.fs||1000000;dat=d;
-    T('g',d.cal?V(d.g):d.raw);
+    // The number is the newest sample, not the one-second average; the peak
+    // and the trace use the highest sample since the last poll, so a hit that
+    // lands between two polls is still seen. Older firmware sends neither.
+    var gl=d.gl!=null?d.gl:d.g,gm=d.gm!=null?d.gm:gl;
+    T('g',d.cal?V(gl):d.raw);
     T('u',d.cal?U():'raw');
     T('sd',d.sd);T('pp',d.pp);
-    if(d.cal&&d.g>peak)peak=d.g;
+    if(d.cal&&gm>peak)peak=gm;
     T('pk',d.cal?V(peak):'--');
     chip('pcal',d.cal,t(d.cal?'cCal':'cNot'));
     chip('pst',d.stable,t(d.stable?'cSteady':'cSettle'));
@@ -3181,7 +3196,7 @@ function tick(){
     var pe=E('ppad'),pc='chip'+(d.pad?' on':'');
     if(pe.className!=pc)pe.className=pc;
     T('ppad',t(d.pad?'cPad':'cWait'));
-    hist.push(d.cal?d.g:0);if(hist.length>140)hist.shift();
+    hist.push(d.cal?gm:0);if(hist.length>140)hist.shift();
     // One page, so every section paints on every tick. T() and H() only
     // touch the DOM when the text actually changed.
     draw();
@@ -3287,7 +3302,13 @@ E('dcon').addEventListener('toggle',function(){
 if(lang){document.getElementById('langpick').style.display='none';}
 fit();          // opening the Sensor tab used to do this; there are no tabs now
 paint();
-setInterval(tick,250);setInterval(pullLog,900);tick();
+// Never stack polls. If the box has not answered the last one, skip this one:
+// on a slow link the requests otherwise queue up and the page shows the past,
+// further behind with every second, until it looks frozen.
+var inT=0,inL=0;
+function poll(){if(inT)return;inT=1;tick().then(function(){inT=0;},function(){inT=0;});}
+function pollLog(){if(inL)return;inL=1;pullLog().then(function(){inL=0;},function(){inL=0;});}
+setInterval(poll,250);setInterval(pollLog,900);tick();
 </script></body></html>)HTML";
 
 static void handlePage() {
@@ -3305,6 +3326,9 @@ static String jsonData() {
   j.reserve(1100);
   j += "\"g\":";      j += String(haveCal() ? rawToGrams(raw) : 0.0f, 1);
   j += ",\"raw\":";   j += String(raw);
+  j += ",\"gl\":";    j += String(liveG, 1);
+  j += ",\"gm\":";    j += String(liveMaxG, 1);
+  liveMaxG = liveG;                   // start a fresh hold for the next poll
   j += ",\"axis\":";  j += String(lastAxis);
   j += ",\"ax\":";    j += String(cfg.axisMap);
   j += ",\"db\":";    j += String(axisDeadbandG(), 0);
