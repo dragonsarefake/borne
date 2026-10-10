@@ -1,0 +1,16 @@
+# Working notes and assistant files - not part of the published code
+.claude/
+CONTEXT.md
+CONTEXT-history.md
+RESOURCES.md
+SCRATCHPAD.md
+
+# Build output and generated test inputs
+firmware/loadcell_testbed/build/
+firmware/loadcell_testbed/page_check.js
+firmware/loadcell_testbed/page_ids.json
+__pycache__/
+
+# Flash kit: binaries of the PREVIOUS firmware, kept locally as the rollback
+LOADCELL_KIT/
+LOADCELL_KIT.zip

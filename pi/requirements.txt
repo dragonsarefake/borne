@@ -1,0 +1,5 @@
+# The button board only. The force pad is a Bluetooth gamepad - read it with
+# whatever the game already uses (pygame, SDL, jstest); nothing extra here.
+evdev>=1.6.1
+# pad.py: the force pad over its USB cable (install_pad.sh uses apt instead)
+pyserial>=3.5

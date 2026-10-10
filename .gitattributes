@@ -1,0 +1,4 @@
+* text=auto
+# These run on the Pi: CRLF line endings would break them there.
+*.sh text eol=lf
+*.py text eol=lf
