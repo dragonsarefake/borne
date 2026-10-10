@@ -1,30 +1,10 @@
-# borne - force pad for the arcade cabinet
+# borne - force pad
 
-An ESP32 + HX711 + load cell that the game reads as a joystick axis:
-0.0 with nothing on the pad, 1.0 at full scale, on axis 0 and axis 1.
+Joystick `esp32borne#1`. Axis 0 and axis 1: 0.0 at rest, 1.0 at full scale.
 
-## Install on the Raspberry Pi
+## 1. Wire it
 
-The pad plugs into the Pi by USB. With the Pi on the internet, type this in
-its terminal:
-
-    curl -L github.com/dragonsarefake/borne/raw/main/pi/install_pad.sh | bash
-
-It installs two packages, starts a small service at every boot, and says
-whether the joystick `esp32borne#1` now exists. Details: [pi/README.md](pi/README.md).
-
-## Wiring
-
-The pad reaches the Raspberry Pi over one USB cable, which is both its power
-and its data. (The cabinet's buttons are separate and are the game developer's;
-nothing here touches them.)
-
-```
-   Raspberry Pi 4 --- USB --- ESP32 --- HX711 --- load cell
-```
-
-The HX711 is drawn as the green board looks with the chip facing you: `P2`
-(six holes) on the left, `P1` (four holes) on the right.
+HX711 with the chip facing you: `P2` on the left, `P1` on the right.
 
 ```
   LOAD CELL  LCS-1 S-type              HX711  green board                 ESP32-WROOM-32 devkit
@@ -40,42 +20,48 @@ The HX711 is drawn as the green board looks with the chip facing you: `P2`
   yellow  shield  ------------- to GND
 ```
 
-| Wire / pin | Goes to | Note |
-|---|---|---|
-| cell **red** (excitation +) | HX711 `E+` | |
-| cell **black** (excitation -) | HX711 `E-` | |
-| cell **white** (signal -) | HX711 `A-` | |
-| cell **green** (signal +) | HX711 `A+` | |
-| cell **yellow** (shield) | ground | |
-| HX711 `GND` | ESP32 `GND` | |
-| HX711 `DT` | ESP32 `GPIO4` | data out of the amplifier |
-| HX711 `SCK` | ESP32 `GPIO5` | clock into the amplifier |
-| HX711 `VCC` | ESP32 `3V3` | not 5 V: the data line must stay at 3.3 V |
-| ESP32 USB-C | Raspberry Pi USB | power and data |
+- `A-` is above `A+` on the header: white above green.
+- `VCC` goes to `3V3`, not 5 V.
+- `B-` and `B+` stay empty.
 
-The colours are the ones printed on the LCS-1's certificate (red +Exc, black
--Exc, green +Sig, white -Sig, yellow shield). A different cell may differ: go
-by its own sheet.
+## 2. Flash the ESP32
 
-Things that catch people out:
+PC, ESP32 on USB (replace `COM7` with its port):
 
-- **`A-` comes before `A+` on the HX711 header**, so white sits above green.
-  Wire by the printed label, not by position.
-- If the reading goes **down** when you press, the two signal wires are
-  swapped. No need to resolder: Setup > Calibration details > Invert the sign.
-- Channel B is unused. Leave `B-` and `B+` empty.
-- The pins are set at the top of the sketch (`PIN_HX711_DT`, `PIN_HX711_SCK`)
-  if you need others. Do not put `SCK` on GPIO 34-39; they are input-only.
-- An S-type cell must be loaded **along its axis**, through the threaded ends.
-  Side load reads wrong and can damage it.
+    arduino-cli compile --upload -p COM7 --fqbn esp32:esp32:esp32:PartitionScheme=huge_app firmware/loadcell_testbed
 
-## What is here
+## 3. Calibrate
 
-| Path | What |
+PC, ESP32 on USB:
+
+    python firmware/loadcell_testbed/usb_page.py
+
+Open http://localhost:8712
+
+1. **Setup**: run steps 1 to 3. Step 2 with nothing on the pad, step 3 with a
+   known weight on it.
+2. **Output to the game**: set the full scale (the force that reads 1.0) and
+   the axis (X + Y, X only, Y only).
+
+Same page from a phone: join the hidden wifi `esp32borne#1`, password
+`borne123`, open http://192.168.4.1
+
+## 4. Install on the Pi
+
+ESP32 plugged into the Pi by USB, Pi on the internet:
+
+    curl -L github.com/dragonsarefake/borne/raw/main/pi/install_pad.sh | bash
+
+It ends with `OK: the joystick exists`. It starts by itself at every boot and
+updates itself from this repository.
+
+## If something is off
+
+| Symptom | Do |
 |---|---|
-| `firmware/loadcell_testbed/loadcell_testbed.ino` | the pad's firmware, including its setup web page |
-| `firmware/loadcell_testbed/usb_page.py` | open the setup page on a PC through the USB cable |
-| `firmware/loadcell_testbed/preview.js`, `page_harness.js`, `extract_page.js` | look at and test the page without a board |
-| `pi/pad.py`, `pi/install_pad.sh` | the pad as a joystick on the Pi |
-
-Build: `arduino-cli compile --fqbn esp32:esp32:esp32:PartitionScheme=huge_app firmware/loadcell_testbed`
+| Reading goes down when pressed | Setup > Calibration details > Invert the sign |
+| Axis stuck at 1.0 | full scale is too low: raise it |
+| No joystick on the Pi | `sudo systemctl status pad` then `journalctl -u pad -n 30` |
+| Joystick there, game does not react | `sudo systemctl stop pad && sudo python3 /opt/pad/pad.py --test` (axes ramp 0 to 1 without the pad), then `sudo systemctl start pad` |
+| Force an update on the Pi | `sudo systemctl start pad-update` |
+| Stop auto-update | `sudo systemctl disable --now pad-update.timer` |
