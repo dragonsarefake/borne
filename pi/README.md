@@ -22,8 +22,6 @@ boot, and prints whether the joystick now exists.
     sudo systemctl stop pad && sudo python3 /opt/pad/pad.py --test
                                      # no pad needed: axes ramp 0..1..0
 
-**It has not yet been run on a Pi.**
-
 ## It keeps itself up to date
 
 A minute after boot and then hourly, the Pi fetches `pi/pad.py` from this
