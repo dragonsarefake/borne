@@ -25,6 +25,16 @@ prints whether the joystick now exists.
     sudo systemctl stop pad && sudo python3 /opt/pad/pad.py --test
                                      # no pad needed: axes ramp 0..1..0
 
+**It keeps itself up to date.** A minute after boot and then hourly, the Pi
+fetches `pi/pad.py` from this repository. If it is different and it compiles,
+it replaces the running one (the previous is kept as `/opt/pad/pad.py.old`) and
+the bridge restarts; otherwise nothing happens. No internet, no problem - the
+joystick never waits for the network.
+
+    sudo systemctl start pad-update  # check for an update right now
+    journalctl -u pad-update -n 10   # what the last check did
+    sudo systemctl disable --now pad-update.timer   # turn auto-update off
+
 `install_pad.sh` is generated from `pad.py` by `make_installer.py`.
 **It has not yet been run on a Pi.**
 

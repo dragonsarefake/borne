@@ -48,9 +48,53 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 UNIT
+
+echo "== self-update: a minute after boot, then hourly"
+# Fetches pad.py from GitHub. It is swapped in ONLY if it differs from what
+# is running and it compiles, and the bridge is restarted only then - so with
+# no internet, or nothing new, this does nothing at all. The joystick never
+# waits for the network: the bridge starts on its own, this runs beside it.
+cat > /opt/pad/update.sh <<'UPDATE_SH'
+#!/bin/sh
+URL=https://raw.githubusercontent.com/dragonsarefake/borne/main/pi/pad.py
+cd /opt/pad || exit 0
+curl -fsSL --max-time 20 "$URL" -o pad.py.new || { rm -f pad.py.new; exit 0; }
+if cmp -s pad.py.new pad.py; then rm -f pad.py.new; exit 0; fi
+if python3 -m py_compile pad.py.new && grep -q 'def make_joystick' pad.py.new; then
+  cp pad.py pad.py.old
+  mv pad.py.new pad.py
+  systemctl restart pad.service
+  echo "pad.py updated (previous kept as pad.py.old)"
+else
+  rm -f pad.py.new
+  echo "downloaded pad.py does not compile - kept the one that works"
+fi
+UPDATE_SH
+chmod +x /opt/pad/update.sh
+cat > /etc/systemd/system/pad-update.service <<'UNIT'
+[Unit]
+Description=Force pad: fetch a newer pad.py if there is one
+
+[Service]
+Type=oneshot
+ExecStart=/opt/pad/update.sh
+UNIT
+cat > /etc/systemd/system/pad-update.timer <<'UNIT'
+[Unit]
+Description=Force pad: check for updates
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target
+UNIT
+
 systemctl daemon-reload
 systemctl enable pad.service
 systemctl restart pad.service
+systemctl enable --now pad-update.timer
 sleep 3
 
 echo
@@ -78,7 +122,7 @@ INSTALL_PAD
 
 with open(os.path.join(HERE, "pad.py"), encoding="utf-8") as f:
     pad = f.read()
-for marker in ("PAD_PY", "INSTALL_PAD", "UNIT\n"):
+for marker in ("PAD_PY", "INSTALL_PAD", "UPDATE_SH", "UNIT\n"):
     if marker in pad:
         raise SystemExit("pad.py contains the heredoc marker %r" % marker)
 if not pad.endswith("\n"):
