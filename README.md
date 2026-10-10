@@ -61,6 +61,7 @@ updates itself from this repository.
 |---|---|
 | Reading goes down when pressed | Setup > Calibration details > Invert the sign |
 | Axis stuck at 1.0 | full scale is too low: raise it |
+| Light press reads 0 | normal: nothing under 1 kg is sent |
 | Nothing on the Pi | Debug on the Pi, below |
 
 ## Debug on the Pi
@@ -125,6 +126,10 @@ Update now / auto-update back on:
     sudo systemctl enable --now pad-update.timer
 
 Start clean: run the install line from step 4 again.
+
+New pad firmware, flashed from the Pi (calibration is kept):
+
+    curl -L github.com/dragonsarefake/borne/raw/main/pi/flash_pad.sh | bash
 
 Talk to the pad (bridge stopped, `Ctrl+]` to exit):
 

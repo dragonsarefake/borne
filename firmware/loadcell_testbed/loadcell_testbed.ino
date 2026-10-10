@@ -2304,10 +2304,15 @@ static void pollPort(Stream& port, char* buf, uint8_t* len, uint8_t cap) {
 // The band is a multiple of the noise step 1 measured, not a number of grams,
 // so it stays right if the cell or the amplifier is ever changed.
 static const float AXIS_DEADBAND_SIGMA = 6.0f;
+// And never less than a kilo. After a hit the housing can settle a few hundred
+// grams heavier than it started, which the game read as a hit of nothing.
+// Nobody punches at under a kilo, so nothing below it is sent at all.
+static const float AXIS_DEADBAND_MIN_G = 1000.0f;
 
 static float axisDeadbandG() {
   if (!haveCal()) return 0.0f;
-  return AXIS_DEADBAND_SIGMA * noiseFloorCounts(0.0f) / fabsf(cfg.countsPerGram);
+  float noise = AXIS_DEADBAND_SIGMA * noiseFloorCounts(0.0f) / fabsf(cfg.countsPerGram);
+  return noise > AXIS_DEADBAND_MIN_G ? noise : AXIS_DEADBAND_MIN_G;
 }
 
 static int16_t axisFromGrams(float g) {
