@@ -45,14 +45,88 @@ Needs python3-serial and python3-evdev, and write access to /dev/uinput (root).
 install_pad.sh does all of it and starts this at every boot - see README.md.
 """
 import glob
+import hashlib
+import subprocess
 import sys
+import threading
 import time
+import urllib.request
 
 import serial
 
 NAME = "esp32borne#1"          # what the game sees the joystick called
 AXIS_MAX = 32767
 ASK_EVERY = 2.0                # s without an axis line before asking again
+
+# The pad's own firmware is kept up to date from here too. firmware/pad.version
+# says which version the pad should run; if the pad reports another one, and
+# nobody has touched it for a minute, firmware/pad.bin is flashed onto it over
+# this same cable. Calibration lives elsewhere in the pad and is not touched.
+RAW = "https://raw.githubusercontent.com/dragonsarefake/borne/main/firmware/"
+IDLE_BEFORE_FLASH = 60.0       # s of zero force before the pad may be flashed
+FLASH_TRIES = 3                # per version, then leave it to a human
+target = {"fw": None, "image": None}
+tried = {}
+
+
+class NeedFlash(Exception):
+    pass
+
+
+def watch_target():
+    """Background: learn which firmware is published. Never touches the pad,
+    so a dead network can never hold up the joystick."""
+    wait = 30
+    while True:
+        time.sleep(wait)
+        try:
+            with urllib.request.urlopen(RAW + "pad.version", timeout=15) as r:
+                fw, sha = r.read().decode().split()
+            if fw != target["fw"]:
+                # Fetch the image here too, and only announce the version once
+                # the image is in hand and matches its checksum. GitHub can
+                # serve the two files a few minutes out of step.
+                with urllib.request.urlopen(RAW + "pad.bin", timeout=120) as r:
+                    image = r.read()
+                if image[:1] != b"\xe9" or hashlib.sha256(image).hexdigest() != sha:
+                    raise ValueError("image and checksum out of step")
+                target["image"], target["fw"] = image, fw
+            wait = 3600
+        except Exception:
+            wait = 300                    # offline: ask again in five minutes
+
+
+def board_version(line):
+    """b'$ID,LOADCELL,fw=1.1.0,proto=1' -> '1.1.0'; anything else -> None."""
+    if not line.startswith(b"$ID,"):
+        return None
+    for part in line.strip().split(b","):
+        if part.startswith(b"fw="):
+            return part[3:].decode("ascii", "replace")
+    return None
+
+
+def flash_due(board_fw, idle_s):
+    fw = target["fw"]
+    return bool(fw and board_fw and board_fw != fw
+                and tried.get(fw, 0) < FLASH_TRIES and idle_s >= IDLE_BEFORE_FLASH)
+
+
+def flash(port):
+    """Put the published firmware on the pad. Raises if esptool fails."""
+    image = target["image"]
+    esptool = [sys.executable, "-m", "esptool"]
+    if subprocess.run(esptool + ["version"], capture_output=True).returncode:
+        subprocess.run(["apt-get", "install", "-y", "esptool"],
+                       capture_output=True, timeout=900)
+    with open("/tmp/pad.bin", "wb") as f:
+        f.write(image)
+    done = subprocess.run(esptool + ["--chip", "esp32", "--port", port, "--baud", "460800",
+                                     "write_flash", "0x10000", "/tmp/pad.bin"],
+                          capture_output=True, timeout=300)
+    if done.returncode:
+        said = (done.stdout + done.stderr).decode("utf-8", "replace").strip()
+        raise RuntimeError("esptool: " + said[-200:])
 
 
 def find_port():
@@ -96,17 +170,27 @@ def run(port, write):
     with serial.Serial(port, 115200, timeout=0.5) as ser:
         asked = 0.0
         heard = time.monotonic()
+        pressed = time.monotonic()        # last time the pad sent any force
+        board_fw = None
         while True:
             now = time.monotonic()
             if now - heard > ASK_EVERY and now - asked > ASK_EVERY:
                 ser.write(b"$AXIS,1\n")   # the pad answers with the current axes
+                if board_fw is None:
+                    ser.write(b"$ID\n")   # and says which firmware it runs
                 asked = now
             # readline(), not "for line in ser": that loop ends silently on the
             # first quiet gap once a timeout is set.
-            xy = parse(ser.readline())
+            line = ser.readline()
+            board_fw = board_version(line) or board_fw
+            xy = parse(line)
             if xy:
                 heard = time.monotonic()
+                if xy != (0, 0):
+                    pressed = heard
                 write(*xy)
+            if flash_due(board_fw, now - pressed):
+                raise NeedFlash()         # leaves the with-block: port closed
 
 
 def main():
@@ -125,12 +209,32 @@ def main():
             v = int((t / 2.0 if t < 2.0 else (4.0 - t) / 2.0) * AXIS_MAX)
             write(v, v)
             time.sleep(0.05)
+    if "--print" not in sys.argv:
+        threading.Thread(target=watch_target, daemon=True).start()
+    pending = False                       # a firmware flash is owed
     while True:
         port = args[0] if args else find_port()
         try:
             if not port:
                 raise serial.SerialException("no serial port")
+            if pending:
+                # Also retried when a flash died half way: the pad cannot say
+                # which version it runs then, so this does not wait to be asked.
+                fw = target["fw"]
+                tried[fw] = tried.get(fw, 0) + 1
+                pending = tried[fw] < FLASH_TRIES
+                write(0, 0)
+                try:
+                    flash(port)
+                    pending = False
+                    print("pad firmware updated to %s" % fw, flush=True)
+                except Exception as err:
+                    print("pad firmware update failed (%s)" % err, file=sys.stderr, flush=True)
+                    time.sleep(5)
+                    continue
             run(port, write)
+        except NeedFlash:
+            pending = True
         except (serial.SerialException, OSError) as err:
             write(0, 0)                   # pad gone: let go of the axis
             print("pad not available (%s) - retrying" % err, file=sys.stderr, flush=True)

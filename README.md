@@ -52,8 +52,10 @@ ESP32 plugged into the Pi by USB, Pi on the internet:
 
     curl -L github.com/dragonsarefake/borne/raw/main/pi/install_pad.sh | bash
 
-It ends with `OK: the joystick exists`. It starts by itself at every boot and
-updates itself from this repository.
+It ends with `OK: the joystick exists`. It starts by itself at every boot.
+Whenever the Pi is online it updates itself and the pad's firmware from this
+repository, with nothing to type. The pad is only reflashed after a minute
+with nobody touching it.
 
 ## If something is off
 
@@ -127,7 +129,11 @@ Update now / auto-update back on:
 
 Start clean: run the install line from step 4 again.
 
-New pad firmware, flashed from the Pi (calibration is kept):
+Which firmware the pad runs, and what the updater did:
+
+    journalctl -u pad | grep -i firmware
+
+Flash the pad's firmware by hand (calibration is kept):
 
     curl -L github.com/dragonsarefake/borne/raw/main/pi/flash_pad.sh | bash
 
